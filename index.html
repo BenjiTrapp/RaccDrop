@@ -13,7 +13,7 @@
       padding: 40px;
     }
     .container {
-      max-width: 500px;
+      max-width: 760px;
       margin: auto;
       background: #1e1e1e;
       padding: 30px;
@@ -25,35 +25,31 @@
       margin-bottom: 10px;
       color: #00e5ff;
     }
-    p {
-      margin: 10px 0;
-    }
+    p { margin: 10px 0; }
+
     input, select, button {
       width: 100%;
       padding: 10px;
-      margin:      font-size: 1em;
+      margin: 10px 0;
+      font-size: 1em;
       border-radius: 6px;
       border: 1px solid #555;
       background-color: #2c2c2c;
       color: #e0e0e0;
     }
-    button {
-      background-color: #00e5ff;
-      color: #121212;
-      border: none;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    button:hover {
-      background-color: #00bcd4;
-    }
-    a {
-      color: #80d8ff;
-      text-decoration: none;
-    }
-    a:hover {
-      text-decoration: underline;
-    }
+    button { background-color: #00e5ff; color: #121212; border: none; cursor: pointer; font-weight: bold; }
+    button:hover { background-color: #00bcd4; }
+
+    a { color: #80d8ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    details { text-align: left; margin-top: 10px; }
+    summary { cursor: pointer; font-weight: 600; }
+    .snippet { background:#111; border:1px solid #333; border-radius:8px; padding:10px; margin:10px 0; }
+    .snip-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.95em; color:#a0a0a0; }
+    .snip-header button { width:auto; padding:6px 10px; margin:0; font-size:0.9em; }
+    pre { margin:0; overflow:auto; max-height:320px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:0.9em; }
   </style>
 </head>
 <body>
@@ -103,9 +99,31 @@
       return new TextDecoder().decode(dec);
     }
 
+    const selectedMethodLabel = () =>
+      document.querySelector('#method option:checked').textContent;
+
+    const escapeHTML = (s) => s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+    function copySnippet(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const text = el.textContent;
+      navigator.clipboard?.writeText(text).then(()=>{
+        const btn = el.closest('.snippet').querySelector('button[data-copy]');
+        if (btn) { const old = btn.textContent; btn.textContent = 'Copied!'; setTimeout(()=>btn.textContent=old, 1200); }
+      }).catch(()=>{});
+    }
+
     async function generateHTML() {
       const file = document.getElementById('fileInput').files[0];
       const method = document.getElementById('method').value;
+      const methodLabel = selectedMethodLabel();
+      const stamp = new Date().toISOString();
       const key = randomKey();
 
       if (!file) {
@@ -115,15 +133,74 @@
 
       const reader = new FileReader();
       reader.onload = async () => {
-        let data = reader.result;
+        let data = reader.result; // Data URL string
         if (method === 'aes') data = await aesEnc(data, key);
         if (method === 'xor') data = xorEnc(data, key);
         if (method === 'hex') data = toHex(data);
         if (method === 'base64') data = btoa(data);
         if (method === 'css') data = `<div id="data" data-file="${btoa(data)}"></div>`;
 
-        const escapedData = data.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
-        const genHTML = `<!DOCTYPE html><html><body>${data}<script>
+        // --- Build copy/paste snippets for both: UI panel and the generated HTML ---
+        let htmlSnippet = '';
+        let jsSnippet = '';
+
+        if (method === 'css') {
+          htmlSnippet = data; // the <div id="data" ...>
+          jsSnippet = `(() => {\n  const d = atob(document.getElementById('data').dataset.file);\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
+        } else if (method === 'base64') {
+          htmlSnippet = '<!-- No extra HTML needed for Base64 method -->';
+          jsSnippet = `(() => {\n  let d = atob("${data}");\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
+        } else if (method === 'hex') {
+          htmlSnippet = '<!-- No extra HTML needed for Hex method -->';
+          jsSnippet = `(() => {\n  let d = decodeURIComponent("${data}".replace(/(..)/g,'%$1'));\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
+        } else if (method === 'xor') {
+          htmlSnippet = '<!-- No extra HTML needed for XOR method -->';
+          jsSnippet = `(() => {\n  function xorDec(d,k){ return atob(d).split('').map((c,i)=>String.fromCharCode(c.charCodeAt(0)^k.charCodeAt(i%k.length))).join(''); }\n  let d = xorDec("${data}", "${key}");\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
+        } else if (method === 'aes') {
+          htmlSnippet = '<!-- No extra HTML needed for AES method -->';
+          jsSnippet = `(async () => {\n  async function aesDec(data, key) {\n    const raw = atob(data);\n    const iv = new Uint8Array([...raw.slice(0,12)].map(c => c.charCodeAt(0)));\n    const encData = new Uint8Array([...raw.slice(12)].map(c => c.charCodeAt(0)));\n    const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), { name: 'AES-GCM' }, false, ['decrypt']);\n    const dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, k, encData);\n    return new TextDecoder().decode(dec);\n  }\n  let d = await aesDec("${data}", "${key}");\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
+        }
+
+        const htmlSnippetEsc = escapeHTML(htmlSnippet);
+        const jsSnippetEsc = escapeHTML(jsSnippet);
+
+        // Escape for safe embedding into inline script
+        const escapedData = data
+          .replace(/\\/g, '\\\\')
+          .replace(/'/g, "\\'")
+          .replace(/\"/g, '\\"');
+
+        // Panel HTML to embed inside generated payload
+        const embeddedPanel = `\n<div class=\"panel\">\n  <div class=\"meta\"><strong>Method:</strong> ${methodLabel} (${method})</div>\n  <p class=\"meta\">Copy & paste these snippets into another website to reconstruct and download the original file.</p>\n  <h3>HTML payload</h3>\n  <pre><code>${htmlSnippetEsc}</code></pre>\n  <h3>JavaScript</h3>\n  <pre><code>${jsSnippetEsc}</code></pre>\n</div>`;
+
+        // Generated HTML with embedded manifest + visible snippets panel
+        const genHTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>RaccDrop Payload</title>
+  <meta name="raccdrop-method" content="${method}">
+  <meta name="raccdrop-method-label" content="${methodLabel}">
+  <meta name="raccdrop-filename" content="${file.name}">
+  <meta name="raccdrop-generated" content="${stamp}">
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 1rem; }
+    .panel { background:#f7f7f7; color:#222; border:1px solid #ddd; border-radius:8px; padding:10px; margin:10px 0; }
+    pre { background:#222; color:#f1f1f1; border-radius:6px; padding:10px; overflow:auto; max-height:300px; }
+    code { font-family: ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:0.9em; }
+    .meta { color:#555; font-size:0.9em; }
+  </style>
+</head>
+<body>
+<!--
+  RaccDrop Manifest
+  -----------------
+  Method: ${methodLabel} (${method})
+  Source filename: ${file.name}
+  Generated (ISO): ${stamp}
+-->
+${data}
+<script>
 (async()=>{
 let d="${escapedData}";
 ${method === 'aes' ? `d=await(${aesDec.toString()})(d,"${key}");` : ''}
@@ -131,15 +208,39 @@ ${method === 'xor' ? `d=(${xorDec.toString()})(d,"${key}");` : ''}
 ${method === 'hex' ? `d=decodeURIComponent(d.replace(/(..)/g,'%$1'));` : ''}
 ${method === 'base64' ? `d=atob(d);` : ''}
 ${method === 'css' ? `d=atob(document.getElementById('data').dataset.file);` : ''}
-const l=document.createElement('a');l.href=d;l.download='${file.name}';document.body.appendChild(l);l.click();l.remove();
-})();<\/script></body></html>`;
+const l=document.createElement('a');
+l.href=d;
+l.download='${file.name}';
+document.body.appendChild(l);
+l.click();
+l.remove();
+})();<\/script>
+${embeddedPanel}
+</body>
+</html>`;
 
         const blob = new Blob([genHTML], { type: 'text/html' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `raccdrop_${file.name}.html`;
+        link.download = `raccdrop_${method}_${file.name}.html`;
         link.click();
-        document.getElementById('status').innerText = '🦝 Trash smuggled successfully!';
+
+        // Enhanced status output with method label and copy-paste snippets (also in UI)
+        document.getElementById('status').innerHTML = `
+          🦝 Trash smuggled successfully!<br>
+          <small>Method: <strong>${methodLabel}</strong></small>
+          <details open>
+            <summary>Show copy‑paste snippets for <em>${methodLabel}</em></summary>
+            <div class="snippet">
+              <div class="snip-header">HTML payload <button data-copy onclick="copySnippet('htmlSnip')">Copy</button></div>
+              <pre><code id="htmlSnip">${htmlSnippetEsc}</code></pre>
+            </div>
+            <div class="snippet">
+              <div class="snip-header">JavaScript <button data-copy onclick="copySnippet('jsSnip')">Copy</button></div>
+              <pre><code id="jsSnip">${jsSnippetEsc}</code></pre>
+            </div>
+          </details>
+        `;
       };
       reader.readAsDataURL(file);
     }
