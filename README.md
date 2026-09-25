@@ -46,14 +46,19 @@ payload in the DOM instead of a JS string literal, and are not chainable.
 
 #### A note on the PNG carrier
 
-It does **not** save space. Measured against the plain Base64 method on
-incompressible input, the generated file is about **14% larger**:
+It does **not** save space. Measured on 100 KB of incompressible input, against
+every other method:
 
-| File | Base64 method | PNG carrier | |
-|---|---|---|---|
-| 10 KB | 13,373 B | 15,414 B | 1.15x |
-| 100 KB | 133,373 B | 152,714 B | 1.15x |
-| 1 MB | 1,333,373 B | 1,525,198 B | 1.14x |
+| Method | Output | Factor |
+|---|---:|---:|
+| `reverse` | 135,366 B | 1.35x |
+| `base64`, `css`, `svg`, `xor`, `aes`, `rc4`, `customb64` | ~180,000 B | 1.80x |
+| **`canvas`** | **188,496 B** | **1.88x** |
+| `hex` | 268,809 B | 2.69x |
+| `charcode`, `decimal` | 450,193 B | 4.50x |
+
+So the carrier costs about 5% over the Base64 method, and 39% over `reverse`,
+which is the most compact option because it re-encodes nothing at all.
 
 Canvas always writes RGBA, so the alpha channel rides along even though only R, G
 and B carry data, and the whole PNG is then Base64'd into the `src` attribute. The
