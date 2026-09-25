@@ -144,6 +144,9 @@
 
     #status { margin-top: 16px; color: #c0c0c0; font-size: 0.95em; }
     #status strong { color: #00ff00; }
+    #sizeInfo { font-size: 0.85em; color: #888; margin: 0 0 12px 0; min-height: 1em; }
+    #sizeInfo strong { color: #00ff00; }
+    .warn { color: #d4a017; }
 
     .features {
       display: flex;
@@ -180,10 +183,10 @@
       <p class="tagline">YOUR PAYLOAD. <strong>OUR DROP.</strong></p>
     </div>
 
-    <span class="label-text"><span class="prompt">&gt;</span> select target</span>
+    <label class="label-text" for="fileInput"><span class="prompt">&gt;</span> select target</label>
     <input type="file" id="fileInput" />
 
-    <span class="label-text"><span class="prompt">&gt;</span> configure drop</span>
+    <label class="label-text" for="method"><span class="prompt">&gt;</span> configure drop</label>
     <select id="method">
       <option value="css">Hide the paws (CSS)</option>
       <option value="xor">Encrypt trash (XOR)</option>
@@ -212,17 +215,19 @@
       <label><input type="checkbox" class="multiCb" value="customb64"> Custom B64</label>
     </div>
 
-    <span class="label-text"><span class="prompt">&gt;</span> delivery trigger</span>
+    <label class="label-text" for="trigger"><span class="prompt">&gt;</span> delivery trigger</label>
     <select id="trigger">
       <option value="click">On button click (user gesture)</option>
       <option value="auto">Automatic on page load</option>
     </select>
 
-    <span class="label-text"><span class="prompt">&gt;</span> landing page title</span>
+    <label class="label-text" for="pageTitle"><span class="prompt">&gt;</span> landing page title</label>
     <input type="text" id="pageTitle" placeholder="Secure File Download" />
 
-    <span class="label-text"><span class="prompt">&gt;</span> delay before delivery (ms)</span>
+    <label class="label-text" for="delay"><span class="prompt">&gt;</span> delay before delivery (ms)</label>
     <input type="number" id="delay" min="0" max="60000" step="100" value="0" />
+
+    <p id="sizeInfo"></p>
 
     <label class="opt-row">
       <input type="checkbox" id="manifestCb" />
@@ -292,7 +297,14 @@
     };
 
     const toHex = str =>
-      [...str].map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+      [...str].map(c => {
+        const v = c.charCodeAt(0);
+        // The decoder splits on /(..)/g, so anything above one byte would desync it.
+        // Unreachable today since every encoder emits ASCII, but a future method
+        // returning non-Latin-1 output should fail here rather than silently corrupt.
+        if (v > 255) throw new Error('toHex: character code ' + v + ' exceeds one byte');
+        return v.toString(16).padStart(2, '0');
+      }).join('');
 
     const xorEnc = (d, k) =>
       btoa([...d].map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ k.charCodeAt(i % k.length))).join(''));
@@ -371,6 +383,9 @@
     const selectedMethodLabel = () =>
       document.querySelector('#method option:checked').textContent;
 
+    const layersChecked = () =>
+      [...document.querySelectorAll('.multiCb:checked')].map(cb => cb.value);
+
     const escapeHTML = (s) => s
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -396,6 +411,59 @@
         if (btn) { const old = btn.textContent; btn.textContent = '[+] copied'; setTimeout(() => btn.textContent = old, 1200); }
       }).catch(() => {});
     }
+
+    // --- Output size estimate ---
+    // Exact for the base64/hex/reverse family. The charcode and decimal factors are
+    // measured averages over base64-ish input, because the real cost depends on the
+    // character distribution and is only known after encoding.
+    const LAYER_FACTOR = {
+      base64: 4 / 3, xor: 4 / 3, aes: 4 / 3, rc4: 4 / 3, customb64: 4 / 3,
+      hex: 2, reverse: 1, charcode: 3.36, decimal: 3.36,
+    };
+    const PAGE_OVERHEAD = 2000;
+
+    const fmtBytes = (n) => n < 1024 ? n + ' B'
+      : n < 1048576 ? (n / 1024).toFixed(1) + ' KB'
+      : (n / 1048576).toFixed(1) + ' MB';
+
+    function estimateOutput(file, method, layers) {
+      const mime = file.type || 'application/octet-stream';
+      if (method === 'canvas') {
+        // raw bytes -> RGBA pixels -> PNG (~5% over the pixel buffer) -> base64
+        const pixels = Math.ceil((file.size + 12) / 3);
+        return Math.round(pixels * 4 * 1.05 * (4 / 3)) + PAGE_OVERHEAD;
+      }
+      let n = ('data:' + mime + ';base64,').length + Math.ceil(file.size / 3) * 4;
+      const chain = method === 'multi' ? layers
+        : (method === 'css' || method === 'svg') ? ['base64']
+        : [method];
+      for (const m of chain) n *= (LAYER_FACTOR[m] || 1);
+      return Math.round(n) + PAGE_OVERHEAD;
+    }
+
+    function refreshEstimate() {
+      const el = document.getElementById('sizeInfo');
+      const file = document.getElementById('fileInput').files[0];
+      if (!file) { el.innerHTML = ''; return; }
+      const method = document.getElementById('method').value;
+      const layers = layersChecked();
+      if (method === 'multi' && layers.length === 0) {
+        el.innerHTML = '<span class="prompt">[i]</span> select at least one layer';
+        return;
+      }
+      const out = estimateOutput(file, method, layers);
+      const factor = out / Math.max(1, file.size);
+      const warn = out > 20 * 1048576 || factor > 3;
+      el.innerHTML = `<span class="prompt">[i]</span> ${fmtBytes(file.size)} in, `
+        + `<strong>~${fmtBytes(out)}</strong> out (${factor.toFixed(2)}x)`
+        + (warn ? `<br><span class="warn">[!] this method inflates the payload heavily`
+            + ` &mdash; reverse or base64 stay near 1.4x/1.8x</span>` : '');
+    }
+
+    ['fileInput', 'method'].forEach(id =>
+      document.getElementById(id).addEventListener('change', refreshEstimate));
+    document.querySelectorAll('.multiCb').forEach(cb =>
+      cb.addEventListener('change', refreshEstimate));
 
     // --- Unified encode helper ---
     async function encodeData(data, method, key) {
@@ -613,15 +681,38 @@ setTimeout(()=>URL.revokeObjectURL(${n.url}),3000);`;
         return;
       }
 
+      // Surface failures instead of dying inside the FileReader callback, where an
+      // exception would leave the status line untouched and the user with nothing.
+      const fail = (err) => {
+        console.error(err);
+        const msg = String((err && err.message) || err);
+        const hint = /subtle|crypto|secure context/i.test(msg)
+          ? '<br><small style="color:#666">Web Crypto requires a secure context. '
+            + 'Serve this page over HTTPS or from localhost, or pick a non-AES method.</small>'
+          : '';
+        document.getElementById('status').innerHTML =
+          '<span class="prompt">[!]</span> Drop failed: ' + escapeHTML(msg) + hint;
+      };
+
+      if (method === 'aes' || (method === 'multi' && layersChecked().includes('aes'))) {
+        if (typeof crypto === 'undefined' || !crypto.subtle) {
+          fail(new Error('AES needs Web Crypto, which is unavailable in this context'));
+          return;
+        }
+      }
+
       const reader = new FileReader();
-      reader.onload = async () => {
+      reader.onerror = () => fail(new Error('could not read the selected file'));
+      reader.onload = () => { build().catch(fail); };
+
+      async function build() {
         let data = reader.result; // Data URL string
         let canvasMime = 'application/octet-stream';
 
         // Determine layers
         let layers = [];
         if (method === 'multi') {
-          layers = [...document.querySelectorAll('.multiCb:checked')].map(cb => cb.value);
+          layers = layersChecked();
           if (layers.length === 0) {
             document.getElementById('status').innerHTML = '<span class="prompt">[!]</span> Select at least one layer.';
             return;
@@ -790,7 +881,7 @@ ${embeddedPanel}
             </div>
           </details>
         `;
-      };
+      }
       reader.readAsDataURL(file);
     }
   </script>

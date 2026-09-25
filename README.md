@@ -81,6 +81,7 @@ Encoding is only half the job — how the file reaches the disk matters just as 
 | **Randomized identifiers** | Every variable, helper function and element ID in the generated file is renamed per build, so two drops of the same input are never byte-identical. The PNG carrier's header magic is randomized too. |
 | **Trigger modes** | Fire on button click (a real user gesture, which some browsers require) or automatically on page load. |
 | **Configurable delay** | Hold delivery for up to 60 s. Useful for pacing a demo; do not mistake it for sandbox evasion, since any serious analysis pipeline waits longer. |
+| **Size estimate** | The UI predicts the output size before you build, within 1% across every method, and warns when a method inflates the payload past 3x. |
 | **Clean-up** | `URL.revokeObjectURL()` after delivery. |
 | **No self-branding** | The `raccdrop-*` meta tags, the manifest comment and the snippet panel are opt-in. Leaving them off removes an obvious static fingerprint. |
 
