@@ -39,8 +39,7 @@ This is a technique known as [HTML Smuggling](https://attack.mitre.org/technique
 | **Decimal** | Decimal dot-separated char codes |
 | **Custom B64** | Custom shuffled Base64 alphabet |
 | **SVG** | Payload hidden in an SVG `data-` attribute |
-| **PNG carrier** | Raw file bytes packed into the RGB channels of an inline PNG, read back at runtime via `canvas.getImageData()` |
-| **Multi-layer** | Chain any combination of the above methods |
+| **PNG carrier** | Raw file bytes packed into the RGB channels of an inline PNG, read back at runtime via `canvas.getImageData()` || **Multi-layer** | Chain any combination of the above methods |
 
 `CSS`, `SVG` and `PNG carrier` are containers rather than encodings — they park the
 payload in the DOM instead of a JS string literal, and are not chainable.
@@ -60,6 +59,11 @@ Canvas always writes RGBA, so the alpha channel rides along even though only R, 
 and B carry data, and the whole PNG is then Base64'd into the `src` attribute. The
 point of this method is a different static profile — the payload sits in a PNG's
 compressed `IDAT` stream rather than in a JavaScript string — not a smaller file.
+
+The carrier is prefixed with a 12-byte header: 4 random magic bytes, a 4-byte
+length and a 4-byte FNV-1a checksum over the payload. The extractor verifies all
+three, so a browser that alters pixel values (colour management on `drawImage` is
+the realistic risk) produces a hard error rather than a silently corrupt download.
 
 ### Delivery
 

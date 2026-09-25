@@ -413,6 +413,17 @@
       }
     }
 
+    // FNV-1a over the payload bytes. Not a security primitive -- it exists to catch
+    // silent corruption, e.g. a browser applying a colour transform on drawImage.
+    function fnv1a(bytes) {
+      let h = 0x811c9dc5;
+      for (let i = 0; i < bytes.length; i++) {
+        h ^= bytes[i];
+        h = Math.imul(h, 0x01000193) >>> 0;
+      }
+      return h >>> 0;
+    }
+
     // --- PNG pixel carrier ---
     // Packs raw file bytes into the RGB channels of a PNG and returns it as a data
     // URL. Storing raw bytes rather than the base64 data URL avoids encoding the
@@ -421,11 +432,13 @@
     //   - alpha must stay 255. Canvas stores premultiplied alpha, so any transparent
     //     pixel makes putImageData/getImageData lossy and corrupts the payload.
     //   - only R, G and B carry data, so 3 bytes per pixel.
-    // Header is 4 random magic bytes + a 4-byte big-endian length. The magic is
-    // regenerated per build, so the carrier holds no constant signature.
+    // Header is 12 bytes: 4 random magic bytes, a 4-byte big-endian length and a
+    // 4-byte FNV-1a checksum of the payload. The magic is regenerated per build, so
+    // the carrier holds no constant signature.
     function pngCarrier(raw, magic) {
       const n = raw.length;
-      const need = 8 + n;
+      const sum = fnv1a(raw);
+      const need = 12 + n;
       const px = Math.ceil(need / 3);
       const w = Math.min(2048, Math.max(1, px));
       const h = Math.ceil(px / w);
@@ -436,7 +449,11 @@
       bytes[5] = (n >>> 16) & 255;
       bytes[6] = (n >>> 8) & 255;
       bytes[7] = n & 255;
-      bytes.set(raw, 8);
+      bytes[8] = (sum >>> 24) & 255;
+      bytes[9] = (sum >>> 16) & 255;
+      bytes[10] = (sum >>> 8) & 255;
+      bytes[11] = sum & 255;
+      bytes.set(raw, 12);
 
       const cv = document.createElement('canvas');
       cv.width = w; cv.height = h;
@@ -454,6 +471,8 @@
     }
 
     // Runtime extractor emitted into the generated file. Yields a Uint8Array.
+    // Validates the magic, bounds-checks the length and verifies the checksum over
+    // the whole payload, so partial corruption cannot pass silently.
     function pngExtractor(imgId, magic) {
       return `await(async()=>{`
         + `const i=document.getElementById('${imgId}');`
@@ -464,9 +483,15 @@
         + `const b=new Uint8Array(q*3);`
         + `for(let k=0,j=0;k<q;k++){b[j++]=p[k*4];b[j++]=p[k*4+1];b[j++]=p[k*4+2];}`
         + `if(b[0]!==${magic[0]}||b[1]!==${magic[1]}||b[2]!==${magic[2]}||b[3]!==${magic[3]})`
-        + `throw new Error('carrier header mismatch');`
-        + `const n=(b[4]<<24)|(b[5]<<16)|(b[6]<<8)|b[7];`
-        + `return b.subarray(8,8+n);})()`;
+        + `throw new Error('carrier magic mismatch');`
+        + `const n=((b[4]<<24)|(b[5]<<16)|(b[6]<<8)|b[7])>>>0;`
+        + `if(n===0||12+n>b.length)throw new Error('carrier length out of range: '+n);`
+        + `const w=((b[8]<<24)|(b[9]<<16)|(b[10]<<8)|b[11])>>>0;`
+        + `const d=b.subarray(12,12+n);`
+        + `let s=0x811c9dc5;`
+        + `for(let k=0;k<d.length;k++){s^=d[k];s=Math.imul(s,0x01000193)>>>0;}`
+        + `if(s!==w)throw new Error('carrier checksum mismatch');`
+        + `return d;})()`;
     }
 
     // Char codes for a string, so literals like the filename stay non-greppable.
@@ -606,7 +631,7 @@ setTimeout(()=>URL.revokeObjectURL(${n.url}),3000);`;
         // Randomized identifiers for this build, guaranteed distinct
         const n = randNames(
           'data', 'raw', 'arr', 'mime', 'url', 'a', 'aes', 'rc4',
-          'std', 'shuf', 'cb64', 'cssId', 'svgId', 'imgId', 'btn'
+          'std', 'shuf', 'cb64', 'cssId', 'svgId', 'imgId', 'btn', 'msg'
         );
         // Per-build carrier header, so the PNG holds no constant signature
         n.magic = [...crypto.getRandomValues(new Uint8Array(4))];
@@ -683,13 +708,18 @@ setTimeout(()=>URL.revokeObjectURL(${n.url}),3000);`;
           ? buildDeliveryBytes(n.data, file.name, canvasMime, n)
           : buildDelivery(n.data, file.name, n);
         const wait = delay > 0 ? `await new Promise(r=>setTimeout(r,${delay}));\n` : '';
+        // Without this the whole chain runs inside an async IIFE, so any failure
+        // ends as an unhandled rejection that nobody ever sees.
+        const body = `try{\n${wait}let ${n.data}=${dataLiteral};\n${decodeChain}\n${delivery}\n}`
+          + `catch(e){console.error(e);const m=document.getElementById('${n.msg}');`
+          + `if(m)m.textContent='This file could not be prepared. Please request a new copy.';}`;
         const runner = trigger === 'click'
-          ? `document.getElementById('${n.btn}').addEventListener('click',async()=>{\n${wait}let ${n.data}=${dataLiteral};\n${decodeChain}\n${delivery}\n});`
-          : `(async()=>{\n${wait}let ${n.data}=${dataLiteral};\n${decodeChain}\n${delivery}\n})();`;
+          ? `document.getElementById('${n.btn}').addEventListener('click',async()=>{\n${body}\n});`
+          : `(async()=>{\n${body}\n})();`;
 
         const pageBody = trigger === 'click'
-          ? `<div class="card">\n  <h1>Your download is ready</h1>\n  <p>Click the button below to save the file.</p>\n  <button id="${n.btn}" class="btn">Download</button>\n</div>`
-          : `<div class="card">\n  <h1>Preparing your download&hellip;</h1>\n  <p>If the download does not start automatically, check your browser prompts.</p>\n</div>`;
+          ? `<div class="card">\n  <h1>Your download is ready</h1>\n  <p id="${n.msg}">Click the button below to save the file.</p>\n  <button id="${n.btn}" class="btn">Download</button>\n</div>`
+          : `<div class="card">\n  <h1>Preparing your download&hellip;</h1>\n  <p id="${n.msg}">If the download does not start automatically, check your browser prompts.</p>\n</div>`;
 
         // Self-identifying metadata, off by default: the manifest, the raccdrop-*
         // meta tags and the snippet panel are a strong static fingerprint.
