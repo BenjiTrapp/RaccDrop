@@ -5,11 +5,43 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RaccDrop - HTML Smuggling Selfcontained HTML generator</title>
   <style>
+      /* -- Operator console vocabulary --------------------------------------
+         Raccoon's Den serves this tool under /tools/raccdrop, same origin as its
+         operator console, and until 2026-11-25 this page spoke none of the
+         console's language: zero custom properties, and its green was the wrong
+         green -- the brand green is #00ff88.
+
+         Names and values are the console's own (static/graph.gohtml :root), so
+         the two read as one product. --border-accent is this page's own, for the
+         green-tinted edge it has always had, derived from the accent so that it
+         follows it.
+
+         NONE OF THIS REACHES THE GENERATED PAYLOAD. Further down, this page
+         builds a self-contained decoy HTML in a template literal, with its own
+         light Segoe-UI look on purpose. EIGHT of the literals replaced here
+         appear in BOTH regions, so a global search-and-replace would have
+         changed what this tool DELIVERS to a target. The substitution was
+         line-bounded to the operator UI, and the payload region is byte-for-byte
+         unchanged.
+         ---------------------------------------------------------------------- */
+      :root {
+        --bg:            #0a0a0f;
+        --bg-raised:     #111118;
+        --bg-panel:      #13131c;
+        --border:        rgba(255,255,255,0.06);
+        --border-accent: rgba(var(--primary-rgb), 0.22);
+        --text:          #e0e0e0;
+        --text-dim:      #8a8aa0;
+        --primary:       #00ff88;
+        --primary-rgb:   0, 255, 136;
+        --warning:       #ffaa00;
+        --mono:          'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', 'Monaco', monospace;
+      }
     * { box-sizing: border-box; }
     body {
-      font-family: 'Courier New', Consolas, 'Liberation Mono', monospace;
-      background-color: #0a0a0a;
-      color: #c0c0c0;
+      font-family: var(--mono);
+      background-color: var(--bg);
+      color: var(--text);
       text-align: center;
       padding: 40px 20px;
       min-height: 100vh;
@@ -25,8 +57,8 @@
         0deg,
         transparent,
         transparent 2px,
-        rgba(0, 255, 0, 0.015) 2px,
-        rgba(0, 255, 0, 0.015) 4px
+        rgba(var(--primary-rgb), 0.015) 2px,
+        rgba(var(--primary-rgb), 0.015) 4px
       );
       pointer-events: none;
       z-index: 0;
@@ -34,11 +66,11 @@
     .container {
       max-width: 720px;
       margin: auto;
-      background: linear-gradient(180deg, #0d0d0d 0%, #111 100%);
+      background: linear-gradient(180deg, var(--bg-raised) 0%, var(--bg-panel) 100%);
       padding: 30px;
       border-radius: 8px;
-      border: 1px solid #1a3a1a;
-      box-shadow: 0 0 30px rgba(0, 255, 0, 0.08), inset 0 0 60px rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--border-accent);
+      box-shadow: 0 0 30px rgba(var(--primary-rgb), 0.08), inset 0 0 60px rgba(0, 0, 0, 0.5);
       position: relative;
       z-index: 1;
       text-align: left;
@@ -47,25 +79,25 @@
       text-align: center;
       margin-bottom: 24px;
       padding-bottom: 20px;
-      border-bottom: 1px solid #1a3a1a;
+      border-bottom: 1px solid var(--border-accent);
     }
     h1 {
       font-size: 2em;
       margin: 0 0 4px 0;
       letter-spacing: 2px;
     }
-    h1 .racc { color: #999; }
-    h1 .drop { color: #00ff00; text-shadow: 0 0 10px rgba(0,255,0,0.5); }
+    h1 .racc { color: var(--text-dim); }
+    h1 .drop { color: var(--primary); text-shadow: 0 0 10px rgba(var(--primary-rgb), 0.5); }
     .tagline {
       font-size: 0.85em;
-      color: #666;
+      color: var(--text-dim);
       margin: 6px 0 0 0;
       letter-spacing: 1px;
     }
-    .tagline strong { color: #00ff00; }
+    .tagline strong { color: var(--primary); }
 
-    .prompt { color: #00ff00; }
-    .label-text { color: #888; font-size: 0.9em; margin-bottom: 4px; display: block; }
+    .prompt { color: var(--primary); }
+    .label-text { color: var(--text-dim); font-size: 0.9em; margin-bottom: 4px; display: block; }
 
     input[type="file"], input[type="text"], input[type="number"], select, button {
       width: 100%;
@@ -74,32 +106,32 @@
       font-size: 0.95em;
       font-family: inherit;
       border-radius: 4px;
-      border: 1px solid #1a3a1a;
-      background-color: #0d0d0d;
-      color: #c0ffc0;
+      border: 1px solid var(--border-accent);
+      background-color: var(--bg-raised);
+      color: var(--text);
       outline: none;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
     input[type="file"]:focus, input[type="text"]:focus, input[type="number"]:focus, select:focus {
-      border-color: #00ff00;
-      box-shadow: 0 0 8px rgba(0,255,0,0.2);
+      border-color: var(--primary);
+      box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.2);
     }
-    input[type="text"]::placeholder { color: #444; }
-    select option { background: #111; color: #c0ffc0; }
+    input[type="text"]::placeholder { color: var(--text-dim); }
+    select option { background: var(--bg-panel); color: var(--text); }
 
     .opt-row {
       display: block;
       font-size: 0.85em;
-      color: #888;
+      color: var(--text-dim);
       cursor: pointer;
       margin: 0 0 8px 0;
     }
-    .opt-row input[type="checkbox"] { accent-color: #00ff00; margin-right: 6px; }
+    .opt-row input[type="checkbox"] { accent-color: var(--primary); margin-right: 6px; }
 
     button {
-      background: linear-gradient(180deg, #00cc00 0%, #009900 100%);
-      color: #000;
-      border: 1px solid #00ff00;
+      background: linear-gradient(180deg, rgba(var(--primary-rgb), 0.8) 0%, rgba(var(--primary-rgb), 0.6) 100%);
+      color: var(--bg);
+      border: 1px solid var(--primary);
       cursor: pointer;
       font-weight: bold;
       font-size: 1em;
@@ -109,76 +141,107 @@
       text-shadow: 0 1px 0 rgba(255,255,255,0.2);
     }
     button:hover {
-      background: linear-gradient(180deg, #00ff00 0%, #00cc00 100%);
-      box-shadow: 0 0 16px rgba(0,255,0,0.4);
+      background: linear-gradient(180deg, var(--primary) 0%, rgba(var(--primary-rgb), 0.8) 100%);
+      box-shadow: 0 0 16px rgba(var(--primary-rgb), 0.4);
     }
 
     #multiOpts {
       display: none;
       margin: 6px 0 14px 0;
       padding: 12px;
-      background: #0d0d0d;
-      border: 1px solid #1a3a1a;
+      background: var(--bg-raised);
+      border: 1px solid var(--border-accent);
       border-radius: 4px;
     }
-    #multiOpts strong { color: #00ff00; font-size: 0.9em; }
+    #multiOpts strong { color: var(--primary); font-size: 0.9em; }
     #multiOpts label {
       display: inline-block;
       margin: 6px 14px 2px 0;
       cursor: pointer;
-      color: #aaa;
+      color: var(--text-dim);
       font-size: 0.9em;
     }
-    #multiOpts input[type="checkbox"] { accent-color: #00ff00; margin-right: 4px; }
+    #multiOpts input[type="checkbox"] { accent-color: var(--primary); margin-right: 4px; }
 
-    a { color: #00ff00; text-decoration: none; }
+    a { color: var(--primary); text-decoration: none; }
     a:hover { text-decoration: underline; }
 
     details { text-align: left; margin-top: 14px; }
-    summary { cursor: pointer; font-weight: 600; color: #00ff00; }
-    .snippet { background: #0a0a0a; border: 1px solid #1a3a1a; border-radius: 4px; padding: 10px; margin: 8px 0; }
-    .snip-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.85em; color: #666; }
+    summary { cursor: pointer; font-weight: 600; color: var(--primary); }
+    .snippet { background: var(--bg); border: 1px solid var(--border-accent); border-radius: 4px; padding: 10px; margin: 8px 0; }
+    .snip-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.85em; color: var(--text-dim); }
     .snip-header button { width: auto; padding: 4px 10px; margin: 0; font-size: 0.85em; text-transform: none; letter-spacing: 0; }
     pre { margin: 0; overflow: auto; max-height: 300px; }
-    code { font-family: inherit; font-size: 0.9em; color: #c0ffc0; }
+    code { font-family: inherit; font-size: 0.9em; color: var(--text); }
 
-    #status { margin-top: 16px; color: #c0c0c0; font-size: 0.95em; }
-    #status strong { color: #00ff00; }
-    #sizeInfo { font-size: 0.85em; color: #888; margin: 0 0 12px 0; min-height: 1em; }
-    #sizeInfo strong { color: #00ff00; }
-    .warn { color: #d4a017; }
+    #status { margin-top: 16px; color: var(--text); font-size: 0.95em; }
+    #status strong { color: var(--primary); }
+    #sizeInfo { font-size: 0.85em; color: var(--text-dim); margin: 0 0 12px 0; min-height: 1em; }
+    #sizeInfo strong { color: var(--primary); }
+    .warn { color: var(--warning); }
 
     .features {
       display: flex;
       justify-content: space-around;
       margin-top: 20px;
       padding-top: 16px;
-      border-top: 1px solid #1a3a1a;
+      border-top: 1px solid var(--border-accent);
       text-align: center;
       flex-wrap: wrap;
       gap: 8px;
     }
     .feat {
       font-size: 0.75em;
-      color: #555;
+      color: var(--text-dim);
       text-transform: uppercase;
       letter-spacing: 1px;
     }
-    .feat span { display: block; color: #00ff00; font-weight: bold; font-size: 1.1em; margin-bottom: 2px; }
+    .feat span { display: block; color: var(--primary); font-weight: bold; font-size: 1.1em; margin-bottom: 2px; }
 
     .footer-line {
       text-align: center;
       margin-top: 14px;
       font-size: 0.8em;
-      color: #333;
+      color: var(--text-dim);
       letter-spacing: 2px;
     }
   </style>
+  <script>
+  // Adopt the operator's accent colour (chosen in the main UI Settings) so this
+  // tool matches instead of staying default-green. Served under /tools/raccdrop,
+  // same origin as the console: we read the same localStorage pref it writes and
+  // live-update when it changes (savePrefs -> storage event). No pref -> keep the
+  // brand green. Byte-for-byte the adopter the five embedded pages carry, on
+  // purpose: uniformity is the interface.
+  (function () {
+      var PREFS_KEY = 'raccden-prefs';
+      function applyAccent() {
+          var accent;
+          try {
+              var s = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+              if (typeof s.accent === 'string' && /^#[0-9a-f]{6}$/i.test(s.accent)) accent = s.accent;
+          } catch (e) { return; }
+          if (!accent) return;
+          var m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(accent);
+          var root = document.documentElement.style;
+          root.setProperty('--primary', accent);
+          root.setProperty('--success', accent);
+          if (m) {
+              root.setProperty('--primary-rgb',
+                  parseInt(m[1], 16) + ', ' + parseInt(m[2], 16) + ', ' + parseInt(m[3], 16));
+          }
+      }
+      applyAccent();
+      window.addEventListener('storage', function (e) {
+          if (e.key === PREFS_KEY) applyAccent();
+      });
+  })();
+  </script>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <img src="static/raccdrop_logo_transparent.png" alt="RaccDrop Logo" style="width: 120px; height: auto; margin-bottom: 12px; filter: drop-shadow(0 0 12px rgba(0, 255, 0, 0.4));" />
+      <img src="static/raccdrop_logo_transparent.png" alt="RaccDrop Logo" style="width: 120px; height: auto; margin-bottom: 12px; filter: drop-shadow(0 0 12px rgba(var(--primary-rgb), 0.4));" />
       <h1><span class="racc">Racc</span><span class="drop">Drop</span></h1>
       <p class="tagline">YOUR PAYLOAD. <strong>OUR DROP.</strong></p>
     </div>
@@ -687,7 +750,7 @@ setTimeout(()=>URL.revokeObjectURL(${n.url}),3000);`;
         console.error(err);
         const msg = String((err && err.message) || err);
         const hint = /subtle|crypto|secure context/i.test(msg)
-          ? '<br><small style="color:#666">Web Crypto requires a secure context. '
+          ? '<br><small style="color:var(--text-dim)">Web Crypto requires a secure context. '
             + 'Serve this page over HTTPS or from localhost, or pick a non-AES method.</small>'
           : '';
         document.getElementById('status').innerHTML =

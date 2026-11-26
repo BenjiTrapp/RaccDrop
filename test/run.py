@@ -44,7 +44,15 @@ def find_engine(preferred=None):
 
 def build_bundle(out: pathlib.Path) -> None:
     html = (ROOT / "index.html").read_text()
-    start = html.index("<script>") + len("<script>")
+    # THE APP SCRIPT IS THE ONE IN <body>, and the search starts after </head> so
+    # that a <head> script is not mistaken for it. This used to take the FIRST
+    # <script> in the file, which was the app only as long as nothing else had
+    # one; adding the accent adopter to <head> made the slice start there and run
+    # to the app's closing tag, so the bundle contained a literal </script> and
+    # node refused it with "Unexpected token '<'". Taking the LAST <script>
+    # instead would be worse: the app embeds '<script>' as text twice while
+    # building its payload, so the slice would start inside the app's own code.
+    start = html.index("<script>", html.index("</head>")) + len("<script>")
     end = html.rindex("</script>")
     app = html[start:end]
     # index.html escapes its own closing tag for the browser; undo for the engine
